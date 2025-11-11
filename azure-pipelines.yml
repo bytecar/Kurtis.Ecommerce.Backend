@@ -1,0 +1,33 @@
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+
+steps:
+- task: UseDotNet@2
+  inputs:
+    packageType: 'sdk'
+    version: '10.0.x'
+    includePreviewVersions: true
+
+- script: dotnet restore Kurtis.Ecommerce.sln
+  displayName: Restore
+
+- script: dotnet build Kurtis.Ecommerce.sln -c $(buildConfiguration) --no-restore
+  displayName: Build
+
+- script: dotnet test Kurtis.Tests/Kurtis.Tests.csproj -c $(buildConfiguration) --no-build --logger trx --collect:"XPlat Code Coverage"
+  displayName: Run unit tests
+
+- script: dotnet test Kurtis.IntegrationTests/Kurtis.IntegrationTests.csproj -c $(buildConfiguration) --no-build --logger trx
+  displayName: Run integration tests
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'CoverageReport'
+    ArtifactName: 'coverage'

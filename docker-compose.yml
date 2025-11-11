@@ -1,0 +1,61 @@
+
+version: '3.8'
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SA_PASSWORD: ${SA_PASSWORD}
+      ACCEPT_EULA: 'Y'
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${SA_PASSWORD}", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - mssql-data:/var/opt/mssql
+
+  catalog:
+    build: ./Kurtis.Api.Catalog
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__KurtisDb=Server=mssql,1433;Database=KurtisDb;User Id=sa;Password=${SA_PASSWORD};
+      - Jwt__Key=${JWT_KEY}
+      - Jwt__Issuer=kurtis.local
+      - Jwt__Audience=kurtis.local
+    ports:
+      - "5001:80"
+
+  inventory:
+    build: ./Kurtis.Api.Inventory
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__KurtisDb=Server=mssql,1433;Database=KurtisDb;User Id=sa;Password=${SA_PASSWORD};
+      - Jwt__Key=${JWT_KEY}
+      - Jwt__Issuer=kurtis.local
+      - Jwt__Audience=kurtis.local
+    ports:
+      - "5002:80"
+
+  users:
+    build: ./Kurtis.Api.Users
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__KurtisDb=Server=mssql,1433;Database=KurtisDb;User Id=sa;Password=${SA_PASSWORD};
+      - Jwt__Key=${JWT_KEY}
+      - Jwt__Issuer=kurtis.local
+      - Jwt__Audience=kurtis.local
+      - Seed__AdminEmail=${ADMIN_EMAIL}
+      - Seed__AdminPassword=${ADMIN_PASSWORD}
+    ports:
+      - "5003:80"
+
+volumes:
+  mssql-data:
