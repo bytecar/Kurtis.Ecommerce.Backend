@@ -1,23 +1,32 @@
 
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.EntityFrameworkCore;
-using System.Text;
-using Kurtis.DAL;
-using Kurtis.DAL.Extensions;
 using Kurtis.Common.Models;
+using Kurtis.DAL;
+using Kurtis.DAL.Dapper.Extensions;
+using Kurtis.DAL.Extensions;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-//builder.Services.AddSwaggerGen(c => { c.SwaggerDoc("v1", new OpenApiInfo { Title = "Kurtis Inventory API", Version = "v1" }); });
 
-builder.Services.AddDbContext<KurtisDbContext>(opt => opt.UseSqlServer(builder.Configuration.GetConnectionString("KurtisDb")));
+builder.Services.AddDbContext<KurtisDbContext>(opt =>
+{
+    opt.UseSqlServer(builder.Configuration.GetConnectionString("KurtisDb"));
+    //opt.LogTo(Console.WriteLine, LogLevel.Information);    
+});
+builder.Services.AddIdentity<User, Role>().AddEntityFrameworkStores<KurtisDbContext>().AddDefaultTokenProviders();
 builder.Services.AddKurtisDal(builder.Configuration);
+builder.Services.AddKurtisDapper(builder.Configuration);
 
-builder.Services.AddIdentity<IdentityUser<int>, IdentityRole<int>>().AddEntityFrameworkStores<KurtisDbContext>().AddDefaultTokenProviders();
-
+builder.Services.AddOpenApi(opt =>
+{
+    opt.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+});
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "VerySecret_JWT_Key_ChangeThis";
 var key = Encoding.ASCII.GetBytes(jwtKey);
 builder.Services.AddAuthentication(options =>
@@ -39,9 +48,20 @@ builder.Services.AddAuthentication(options =>
 });
 
 var app = builder.Build();
-app.UseSwagger(); 
-app.UseSwaggerUI();
-app.UseAuthentication(); 
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapScalarApiReference();
+    app.MapOpenApi();
+}
+else
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseRouting();
+app.UseStaticFiles();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();

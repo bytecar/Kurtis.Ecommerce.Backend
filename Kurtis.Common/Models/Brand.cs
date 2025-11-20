@@ -7,5 +7,10 @@ namespace Kurtis.Common.Models
         public string? Description { get; set; }
         public string? ImageUrl { get; set; }
         public bool Active { get; set; } = true;
+        public string Name { get; set; } = null!;
+        public string? Logo { get; set; }        
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+
     }
 }

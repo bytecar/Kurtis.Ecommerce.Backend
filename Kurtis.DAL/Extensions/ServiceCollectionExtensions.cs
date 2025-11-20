@@ -14,6 +14,10 @@ namespace Kurtis.DAL.Extensions
             services.AddDbContext<KurtisDbContext>(opt => opt.UseSqlServer(configuration.GetConnectionString("KurtisDb")));
             services.AddScoped<IProductRepository, ProductRepository>();
             services.AddScoped<IInventoryRepository, InventoryRepository>();
+            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
+            services.AddScoped<IRecentlyViewedRepository, RecentlyViewedRepository>();
+            services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
+            services.AddScoped<IReturnRepository, ReturnRepository>();
             return services;
         }
 
@@ -22,6 +26,10 @@ namespace Kurtis.DAL.Extensions
             services.AddDbContext<KurtisDbContext>(opt => opt.UseSqlServer(connectionString));
             services.AddScoped<IProductRepository, ProductRepository>();
             services.AddScoped<IInventoryRepository, InventoryRepository>();
+            services.AddScoped<IOrderItemRepository, OrderItemRepository>();
+            services.AddScoped<IRecentlyViewedRepository, RecentlyViewedRepository>();
+            services.AddScoped<IUserPreferencesRepository, UserPreferencesRepository>();
+            services.AddScoped<IReturnRepository, ReturnRepository>();
             return services;
         }
     }

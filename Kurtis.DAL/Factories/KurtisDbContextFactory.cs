@@ -22,7 +22,7 @@ namespace Kurtis.DAL
 
             var optionsBuilder = new DbContextOptionsBuilder<KurtisDbContext>();
             var connectionString = configuration.GetConnectionString("KurtisDb")
-                ?? "Server=SUNNYGAME,1433;Database=KurtisDB;User Id=sa;Password=Welcome$123;TrustServerCertificate=True;";
+                ?? "Server=.;Database=KurtisDB;User Id=sa;Password=Welcome$123;Trusted_Connection=True;TrustServerCertificate=True;";
 
             optionsBuilder.UseSqlServer(connectionString);
 

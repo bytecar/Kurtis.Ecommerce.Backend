@@ -9,6 +9,7 @@ namespace Kurtis.DAL.Interfaces
         Task<IEnumerable<Inventory>> GetByProductIdAsync(int productId);
         Task<bool> DecrementStockAsync(int productId, string size, int qty);
         Task UpdateAsync(Inventory inv);
+        Task DeleteAsync(int id);
 
     }
 }

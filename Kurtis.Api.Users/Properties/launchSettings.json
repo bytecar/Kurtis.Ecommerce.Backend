@@ -1,12 +1,13 @@
 {
   "profiles": {
-    "Kurtis.Api.Users": {
+   "Kurtis.Api.Users": {
       "commandName": "Project",
       "launchBrowser": true,
+      "launchUrl": "scalar",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+         "ASPNETCORE_ENVIRONMENT": "Development"
       },
-      "applicationUrl": "https://localhost:59290;http://localhost:59292"
-    }
+      "applicationUrl": "http://SUNNYGAME:59292"
+   }
   }
 }

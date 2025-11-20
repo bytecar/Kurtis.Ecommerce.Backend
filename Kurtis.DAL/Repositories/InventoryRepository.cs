@@ -29,6 +29,14 @@ namespace Kurtis.DAL.Repositories
             return await _db.Inventories.Where(i => i.ProductId == productId).AsNoTracking().ToListAsync();
         }
 
+        public async Task DeleteAsync(int id)
+        {
+            var p = await _db.Inventories.FindAsync(id);
+            if (p == null) return;
+            _db.Inventories.Remove(p);
+            await _db.SaveChangesAsync();
+        }
+
         public async Task<bool> DecrementStockAsync(int productId, string size, int qty)
         {
             var item = await _db.Inventories.FromSqlInterpolated($@"

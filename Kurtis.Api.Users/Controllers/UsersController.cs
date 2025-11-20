@@ -1,85 +1,179 @@
-
 using Microsoft.AspNetCore.Mvc;
-using Kurtis.Common.Models;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
+using Kurtis.Common.DTOs;
+using Kurtis.Common.Models;
 
 namespace Kurtis.Api.Users.Controllers
 {
+    /// <summary>All endpoints pertaining to Users</summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class UsersController : ControllerBase
+    [Authorize]
+    public class UsersController(UserManager<User> userManager, ILogger<UsersController> logger) : ControllerBase
     {
-        private readonly UserManager<IdentityUser<int>> _users;
-        private readonly SignInManager<IdentityUser<int>> _signin;
-        private readonly IConfiguration _cfg;
 
-        public UsersController(UserManager<IdentityUser<int>> users, SignInManager<IdentityUser<int>> signin, IConfiguration cfg)
+        /// <summary>Get user by ID (admin only)</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpGet("{id:int}")]
+        public async Task<IActionResult> GetUser(int id)
         {
-            _users = users; _signin = signin; _cfg = cfg;
-        }
+            var user = await userManager.FindByIdAsync(id.ToString());
+            if (user == null)
+                return NotFound(new { error = "User not found" });
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterDto dto)
-        {
-            var user = new IdentityUser<int> { UserName = dto.Username, Email = dto.Email, NormalizedUserName = dto.DisplayName };
-            var res = await _users.CreateAsync(user, dto.Password);
-            if (!res.Succeeded) return BadRequest(res.Errors);
-            await _users.AddToRoleAsync(user, "user");
-            return Ok(new { user.Id, user.Email });
-        }
-
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginDto dto)
-        {
-            var user = await _users.FindByEmailAsync(dto.Email);
-            if (user == null) return Unauthorized();
-            var sig = await _signin.CheckPasswordSignInAsync(user, dto.Password, false);
-            if (!sig.Succeeded) return Unauthorized();
-            var token = GenerateToken(user);
-            return Ok(new { token });
-        }
-
-        [Authorize]
-        [HttpGet("me")]
-        public async Task<IActionResult> Me()
-        {
-            var idClaim = User.FindFirst("uid")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (idClaim==null) return Unauthorized();
-            var user = await _users.FindByIdAsync(idClaim);
-            if (user==null) return Unauthorized();
-            return Ok(new { user.Id, user.Email, user.NormalizedUserName });
-        }
-
-        private string GenerateToken(IdentityUser<int> user)
-        {
-            var key = Encoding.ASCII.GetBytes(_cfg["Jwt:Key"] ?? "VerySecret_JWT_Key_ChangeThis");
-            var claims = new List<Claim> {
-                new Claim(ClaimTypes.Name, user.UserName ?? ""),
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim("uid", user.Id.ToString())
-            };
-            var roles = _users.GetRolesAsync(user).GetAwaiter().GetResult();
-            foreach(var r in roles) claims.Add(new Claim(ClaimTypes.Role, r));
-
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var tokenDescriptor = new SecurityTokenDescriptor
+            var roles = await userManager.GetRolesAsync(user);
+            return Ok(new
             {
-                Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddHours(4),
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
-                Issuer = _cfg["Jwt:Issuer"],
-                Audience = _cfg["Jwt:Audience"]
+                id = user.Id,
+                email = user.Email,
+                username = user.UserName,
+                roles = roles,
+                emailConfirmed = user.EmailConfirmed
+            });
+        }
+
+        /// <summary>List all users (admin only)</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpGet]
+        public IActionResult ListUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var users = userManager.Users
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Email,
+                    u.UserName,
+                    u.EmailConfirmed
+                })
+                .ToList();
+
+            return Ok(new { data = users, page, pageSize });
+        }
+
+        /// <summary>Create a new user (admin only)</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpPost]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserDTO dto)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var user = new User
+            {
+                UserName = dto.Username,
+                Email = dto.Email,
+                EmailConfirmed = true, // Admins create confirmed users
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            return tokenHandler.WriteToken(token);
+
+            var result = await userManager.CreateAsync(user, dto.Password);
+            if (!result.Succeeded)
+                return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+            // Assign role
+            try 
+            {
+                var roleResult = await userManager.AddToRoleAsync(user, dto.Role);
+                if (!roleResult.Succeeded)
+                {
+                    // If role assignment fails, delete the user to avoid partial state
+                    await userManager.DeleteAsync(user);
+                    return BadRequest(new { errors = roleResult.Errors.Select(e => e.Description) });
+                }
+            }
+            catch (Exception ex)
+            {
+                await userManager.DeleteAsync(user);
+                return BadRequest(new { error = $"Failed to assign role: {ex.Message}" });
+            }
+
+            logger.LogInformation($"User {user.Id} created by admin with role {dto.Role}");
+            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new { user.Id, user.Email, user.UserName, Role = dto.Role });
+        }
+
+        /// <summary>Update user profile (own user or admin)</summary>
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserDTO dto)
+        {
+            var currentUserId = User.FindFirst("uid")?.Value;
+            var isAdmin = User.IsInRole("Admin");
+
+            if (currentUserId != id.ToString() && !isAdmin)
+                return Forbid();
+
+            var user = await userManager.FindByIdAsync(id.ToString());
+            if (user == null)
+                return NotFound();
+
+            if (!string.IsNullOrEmpty(dto.Email) && dto.Email != user.Email)
+            {
+                var existingUser = await userManager.FindByEmailAsync(dto.Email);
+                if (existingUser != null)
+                    return BadRequest(new { error = "Email already in use" });
+
+                user.Email = dto.Email;
+                user.UserName = dto.Email; // Keep username in sync
+            }
+
+            if (!string.IsNullOrEmpty(dto.PhoneNumber))
+                user.PhoneNumber = dto.PhoneNumber;
+
+            var result = await userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+            logger.LogInformation($"User {id} profile updated");
+            return Ok(new { message = "User updated successfully", user = new { user.Id, user.Email, user.UserName } });
+        }
+
+        /// <summary>Delete user (admin only)</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> DeleteUser(int id)
+        {
+            var user = await userManager.FindByIdAsync(id.ToString());
+            if (user == null)
+                return NotFound();
+
+            var result = await userManager.DeleteAsync(user);
+            if (!result.Succeeded)
+                return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+            logger.LogInformation($"User {id} deleted");
+            return NoContent();
+        }
+
+        /// <summary>Assign role to user (admin only)</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpPost("{id:int}/roles")]
+        public async Task<IActionResult> AssignRole(int id, [FromBody] AssignRoleDTO dto)
+        {
+            var user = await userManager.FindByIdAsync(id.ToString());
+            if (user == null)
+                return NotFound();
+
+            if (!await userManager.IsInRoleAsync(user, dto.Role))
+                await userManager.AddToRoleAsync(user, dto.Role);
+
+            return Ok(new { message = $"Role {dto.Role} assigned to user {id}" });
+        }
+
+        /// <summary>Remove role from user (admin only)</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpDelete("{id:int}/roles/{role}")]
+        public async Task<IActionResult> RemoveRole(int id, string role)
+        {
+            var user = await userManager.FindByIdAsync(id.ToString());
+            if (user == null)
+                return NotFound();
+
+            if (await userManager.IsInRoleAsync(user, role))
+                await userManager.RemoveFromRoleAsync(user, role);
+
+            return Ok(new { message = $"Role {role} removed from user {id}" });
         }
     }
-
-    public record RegisterDto(string Username, string Email, string Password, string? DisplayName);
-    public record LoginDto(string Email, string Password);
 }
