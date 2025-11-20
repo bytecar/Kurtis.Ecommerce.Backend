@@ -20,5 +20,6 @@ namespace Kurtis.Common.DTOs
         public string Role { get; set; } = "customer";
 
         public string? FullName { get; set; }
+        public string? Status { get; set; } = "active";
     }
 }
